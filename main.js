@@ -34,7 +34,7 @@ const type_transformers = {
 const OhMyProps = module.exports = function OhMyProps (args_schema) {
 	this.args_schema = args_schema;
 
-	for (const [ key, schema ] of iterate(this.args_schema)) {
+	for (const schema of iterate(this.args_schema).values()) {
 		const validators = [];
 
 		const { type } = schema;
@@ -168,7 +168,20 @@ OhMyProps.prototype.transform = function (args) {
 	return args_result;
 };
 OhMyProps.prototype.isValid = function (args) {
-	return null !== this.transform(args);
+	return this.transform(args) !== null;
+};
+
+OhMyProps.wrap = (args_schema, fn) => {
+	const validator = new OhMyProps(args_schema);
+
+	return (args = {}) => {
+		args = validator.transform(args);
+		if (null === args) {
+			throw new Error('OHMYPROPS.INVALID_ARGUMENTS: Invalid arguments given.');
+		}
+
+		return fn(args);
+	};
 };
 
 const register = {
@@ -188,7 +201,7 @@ OhMyProps.type = (name) => {
 	if (register.types.has(name)) {
 		return register.types.get(name);
 	}
-	throw new Error(`Type ${name} ha not been registered.`);
+	throw new Error(`Type ${name} has not been registered.`);
 };
 OhMyProps.registerValidator = (name, fn) => {
 	if (register.validators.has(name)) {
@@ -201,7 +214,7 @@ OhMyProps.validator = (name) => {
 	if (register.validators.has(name)) {
 		return register.validators.get(name);
 	}
-	throw new Error(`Validator ${name} ha not been registered.`);
+	throw new Error(`Validator ${name} has not been registered.`);
 };
 
 OhMyProps.registerType(
