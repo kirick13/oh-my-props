@@ -1,50 +1,91 @@
 
-const { iterate } = require('uiterator');
-
 const hasOwnProperty = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
+const isObject = (value) => null !== value && typeof value === 'object' && value.constructor.name === 'Object';
 
-const type_validators = {
-	[ String ]: (value) => typeof value === 'string',
-	[ Number ]: (value) => typeof value === 'number',
-	[ Boolean ]: (value) => typeof value === 'boolean',
-	[ Symbol ]: (value) => typeof value === 'symbol',
-	[ Object ]: (value) => typeof value === 'object' && value instanceof Object,
-	[ Array ]: (value) => Array.isArray(value),
-};
-const type_transformers = {
-	[ String ]: (value) => String(value),
-	[ Number ]: (value) => {
-		value = Number.parseFloat(value);
-		return Number.isNaN(value) ? null : value;
-	},
-	[ Boolean ]: (value) => {
-		if (typeof value === 'boolean') {
-			return value;
-		}
-		else if ('1' === value || 'true' === value) {
-			return true;
-		}
-		else if ('0' === value || 'false' === value) {
-			return false;
-		}
-		return null;
-	},
-};
+const type_validators = new Map([
+	[
+		String,
+		(value) => typeof value === 'string',
+	],
+	[
+		Number,
+		(value) => typeof value === 'number',
+	],
+	[
+		Boolean,
+		(value) => typeof value === 'boolean',
+	],
+	[
+		Symbol,
+		(value) => typeof value === 'symbol',
+	],
+	[
+		Object,
+		isObject,
+	],
+	[
+		Array,
+		Array.isArray,
+	],
+]);
+const type_transformers = new Map([
+	[
+		String,
+		(value) => String(value),
+	],
+	[
+		Number,
+		(value) => {
+			value = Number.parseFloat(value);
+			return Number.isNaN(value) ? null : value;
+		},
+	],
+	[
+		Boolean,
+		(value) => {
+			if (typeof value === 'boolean') {
+				return value;
+			}
+			if ('1' === value || 'true' === value) {
+				return true;
+			}
+			if ('0' === value || 'false' === value) {
+				return false;
+			}
+			return null;
+		},
+	],
+	[
+		JSON,
+		value => {
+			if (typeof value === 'object') {
+				return value;
+			}
 
-const OhMyProps = module.exports = function OhMyProps (args_schema) {
-	this.args_schema = args_schema;
+			try {
+				return JSON.parse(value);
+			}
+			catch {
+				return null;
+			}
+		},
+	],
+]);
 
-	for (const schema of iterate(this.args_schema).values()) {
+const OhMyProps = module.exports = function OhMyProps (props) {
+	this.props = props;
+
+	for (const schema of Object.values(props)) {
 		const validators = [];
 
 		const { type } = schema;
 
 		// type validator / transformer
 		if (true === schema.type_cast) {
-			if (hasOwnProperty(type_transformers, type)) {
+			if (type_transformers.has(type)) {
 				validators.push({
 					is_transform: true,
-					fn: type_transformers[type],
+					fn: type_transformers.get(type),
 				});
 			}
 			else {
@@ -52,12 +93,12 @@ const OhMyProps = module.exports = function OhMyProps (args_schema) {
 			}
 		}
 		else {
-			if (hasOwnProperty(type_validators, type)) {
+			if (type_validators.has(type)) {
 				validators.push({
-					fn: type_validators[type],
+					fn: type_validators.get(type),
 				});
 			}
-			else {
+			else if (typeof type === 'function') {
 				validators.push({
 					fn: (value) => value instanceof type,
 				});
@@ -65,7 +106,10 @@ const OhMyProps = module.exports = function OhMyProps (args_schema) {
 		}
 
 		// subvalidator
-		if (hasOwnProperty(schema, 'subvalidator') && schema.subvalidator instanceof OhMyProps) {
+		if (
+			hasOwnProperty(schema, 'subvalidator')
+			&& schema.subvalidator instanceof OhMyProps
+		) {
 			if (Array === schema.type) {
 				validators.push({
 					is_transform: true,
@@ -87,7 +131,7 @@ const OhMyProps = module.exports = function OhMyProps (args_schema) {
 			else {
 				validators.push({
 					is_transform: true,
-					fn: (value) => {
+					fn (value) {
 						if (value instanceof Object && typeof value !== 'function') {
 							return schema.subvalidator.transform(value);
 						}
@@ -98,27 +142,31 @@ const OhMyProps = module.exports = function OhMyProps (args_schema) {
 		}
 
 		// user-defined validators
-		if (Array.isArray(schema.validator)) {
-			for (const fn of schema.validator) {
-				if (typeof fn === 'function') {
-					validators.push({ fn });
+		{
+			const { validator } = schema;
+
+			if (Array.isArray(validator)) {
+				for (const fn of validator) {
+					if (typeof fn === 'function') {
+						validators.push({ fn });
+					}
 				}
 			}
-		}
-		else if (typeof schema.validator === 'function') {
-			validators.push({
-				fn: schema.validator,
-			});
-		}
+			else if (typeof validator === 'function') {
+				validators.push({
+					fn: validator,
+				});
+			}
 
-		schema.validators = validators;
-		delete schema.validator;
+			schema.validators = validators;
+			delete schema.validator;
+		}
 	}
 };
 OhMyProps.prototype.transform = function (args) {
 	const args_result = {};
 
-	for (const [ key, schema ] of iterate(this.args_schema)) {
+	for (const [ key, schema ] of Object.entries(this.props)) {
 		let value;
 
 		if (hasOwnProperty(args, key)) {
@@ -134,7 +182,7 @@ OhMyProps.prototype.transform = function (args) {
 		}
 
 		if (undefined === value) {
-			return null;
+			value = null;
 		}
 
 		if (null === value) {
@@ -171,8 +219,8 @@ OhMyProps.prototype.isValid = function (args) {
 	return this.transform(args) !== null;
 };
 
-OhMyProps.wrap = (args_schema, fn) => {
-	const validator = new OhMyProps(args_schema);
+OhMyProps.wrap = (props, fn) => {
+	const validator = new OhMyProps(props);
 
 	return (args = {}) => {
 		args = validator.transform(args);
@@ -184,51 +232,26 @@ OhMyProps.wrap = (args_schema, fn) => {
 	};
 };
 
-const register = {
-	types     : new Map(),
-	validators: new Map(),
-};
-OhMyProps.registerType = (name, fn_transform) => {
-	if (register.types.has(name)) {
-		throw new Error(`Type ${name} already registered.`);
+OhMyProps.createType = ({
+	name,
+	transformer,
+	validator,
+}) => {
+	const type = Symbol('OHMYPROPS.TYPE.' + (name ?? 'CUSTOM'));
+
+	if (typeof validator === 'function') {
+		type_validators.set(
+			type,
+			validator,
+		);
 	}
 
-	const key = Symbol('OHMYPROPS.TYPE.' + name);
-	register.types.set(name, key);
-	type_transformers[key] = fn_transform;
-};
-OhMyProps.type = (name) => {
-	if (register.types.has(name)) {
-		return register.types.get(name);
-	}
-	throw new Error(`Type ${name} has not been registered.`);
-};
-OhMyProps.registerValidator = (name, fn) => {
-	if (register.validators.has(name)) {
-		throw new Error(`Validator ${name} already registered.`);
+	if (typeof transformer === 'function') {
+		type_transformers.set(
+			type,
+			transformer,
+		);
 	}
 
-	register.validators.set(name, fn);
+	return type;
 };
-OhMyProps.validator = (name) => {
-	if (register.validators.has(name)) {
-		return register.validators.get(name);
-	}
-	throw new Error(`Validator ${name} has not been registered.`);
-};
-
-OhMyProps.registerType(
-	'JSON',
-	value => {
-		if (typeof value === 'object') {
-			return value;
-		}
-
-		try {
-			return JSON.parse(value);
-		}
-		catch {}
-
-		return null;
-	},
-);
