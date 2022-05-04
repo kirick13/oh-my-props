@@ -1,45 +1,12 @@
 
+/* eslint-disable max-nested-callbacks */
+/* eslint-disable node/no-unpublished-require */
+
 const assert = require('assert');
-const { strictEqual, notStrictEqual, deepStrictEqual } = assert.strict;
+const { strictEqual, notStrictEqual } = assert.strict;
+const { describe, it } = require('mocha');
 
 const OhMyProps = require('.');
-const isValid = (args_schema, args) => new OhMyProps().isValid();
-
-describe('registrations', () => {
-	it('new type', () => {
-		OhMyProps.registerType(
-			'COMMA_SEPARATED_SET_NUMBERS',
-			value => {
-				if (typeof value === 'string') {
-					value = new Set(
-						value
-						.split(',')
-						.map(a => Number.parseFloat(a)),
-					);
-
-					if (value.has(Number.NaN) === false) {
-						return value;
-					}
-				}
-
-				return null;
-			},
-		);
-	});
-	it('new validator', () => {
-		OhMyProps.registerValidator(
-			'SET_INTEGERS',
-			value => {
-				for (const el of value) {
-					if (Number.isInteger(el) === false) {
-						return false;
-					}
-				}
-				return true;
-			},
-		);
-	});
-});
 
 describe('type validation', () => {
 	describe('undefined value', () => {
@@ -189,7 +156,7 @@ describe('type validation', () => {
 							type: Boolean,
 						},
 					}).isValid({
-						test: Symbol(),
+						test: Symbol(''),
 					}),
 					false,
 				);
@@ -238,7 +205,7 @@ describe('type validation', () => {
 							type: Array,
 						},
 					}).isValid({
-						test: Symbol(),
+						test: Symbol(''),
 					}),
 					false,
 				);
@@ -246,34 +213,30 @@ describe('type validation', () => {
 		});
 
 		describe('object', () => {
-			it('value is object', () => {
+			const propsInstance = new OhMyProps({
+				test: {
+					type: Object,
+				},
+			});
+
+			it('value is an object', () => {
 				strictEqual(
-					new OhMyProps({
-						test: {
-							type: Object,
-						},
-					}).isValid({
+					propsInstance.isValid({
 						test: {},
 					}),
 					true,
 				);
 			});
-			it('value is NOT object', () => {
-				const validator = new OhMyProps({
-					test: {
-						type: Object,
-					},
-				});
-
+			it('value is NOT an object', () => {
 				strictEqual(
-					validator.isValid({
+					propsInstance.isValid({
 						test: [],
 					}),
-					true,
+					false,
 				);
 				strictEqual(
-					validator.isValid({
-						test: Symbol(),
+					propsInstance.isValid({
+						test: Symbol(''),
 					}),
 					false,
 				);
@@ -300,7 +263,7 @@ describe('type validation', () => {
 							type: OhMyProps,
 						},
 					}).isValid({
-						test: Symbol(),
+						test: Symbol(''),
 					}),
 					false,
 				);
@@ -308,22 +271,43 @@ describe('type validation', () => {
 		});
 
 		describe('comma-separated set of numbers', () => {
+			const TYPE_COMMA_SEPARATED_SET_NUMBERS = OhMyProps.createType({
+				name: 'COMMA_SEPARATED_SET_NUMBERS',
+				transformer: (value) => {
+					if (typeof value === 'string') {
+						value = new Set(
+							value
+							.split(',')
+							.map(a => Number.parseFloat(a)),
+						);
+
+						if (value.has(Number.NaN) === false) {
+							return value;
+						}
+					}
+
+					return null;
+				},
+			});
+
 			const object = {
 				test: '1,2,-4,1.645,2',
 			};
 
 			it('casting', () => {
-				const result = new OhMyProps({
+				const propsInstance = new OhMyProps({
 					test: {
-						type: OhMyProps.type('COMMA_SEPARATED_SET_NUMBERS'),
+						type: TYPE_COMMA_SEPARATED_SET_NUMBERS,
 						type_cast: true,
 					},
-				}).transform(object);
+				});
+
+				const result = propsInstance.transform(object);
 
 				notStrictEqual(result, null);
 				strictEqual(result.test.size, 4);
 				strictEqual(
-					Array.from(result.test).sort((a, b) => a - b).join(','),
+					Array.from(result.test).sort((a, b) => a - b).join(),
 					'-4,1,1.645,2',
 				);
 			});
@@ -331,9 +315,17 @@ describe('type validation', () => {
 			it('validating with SET_INTEGERS', () => {
 				const validator = new OhMyProps({
 					test: {
-						type: OhMyProps.type('COMMA_SEPARATED_SET_NUMBERS'),
+						type: TYPE_COMMA_SEPARATED_SET_NUMBERS,
 						type_cast: true,
-						validator: OhMyProps.validator('SET_INTEGERS'),
+						validator: (value) => {
+							for (const el of value) {
+								if (!Number.isInteger(el)) {
+									return false;
+								}
+							}
+
+							return true;
+						},
 					},
 				});
 

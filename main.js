@@ -1,6 +1,6 @@
 
 const hasOwnProperty = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
-const isObject = (value) => null !== value && typeof value === 'object' && value.constructor.name === 'Object';
+const isPlainObject = (value) => typeof value === 'object' && null !== value && value.constructor.name === 'Object';
 
 const type_validators = new Map([
 	[
@@ -21,7 +21,7 @@ const type_validators = new Map([
 	],
 	[
 		Object,
-		isObject,
+		isPlainObject,
 	],
 	[
 		Array,
@@ -89,7 +89,7 @@ const OhMyProps = module.exports = function OhMyProps (props) {
 				});
 			}
 			else {
-				throw new Error(`Cannot cast to type ${type}.`);
+				throw new TypeError(`Cannot cast to type ${type}.`);
 			}
 		}
 		else {
@@ -132,7 +132,10 @@ const OhMyProps = module.exports = function OhMyProps (props) {
 				validators.push({
 					is_transform: true,
 					fn (value) {
-						if (value instanceof Object && typeof value !== 'function') {
+						if (
+							value instanceof Object
+							&& typeof value !== 'function'
+						) {
 							return schema.subvalidator.transform(value);
 						}
 						return null;
@@ -225,7 +228,7 @@ OhMyProps.wrap = (props, fn) => {
 	return (args = {}) => {
 		args = validator.transform(args);
 		if (null === args) {
-			throw new Error('OHMYPROPS.INVALID_ARGUMENTS: Invalid arguments given.');
+			throw new TypeError('Invalid props.');
 		}
 
 		return fn(args);

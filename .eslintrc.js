@@ -6,6 +6,7 @@ module.exports = {
 		es2021: true,
 	},
 	extends: [
+		'eslint:recommended',
 		'xo',
 		'plugin:import/recommended',
 		'plugin:no-use-extend-native/recommended',
