@@ -1,140 +1,140 @@
 
 # oh-my-props
 
-Validate &amp; transform your props by schema.
+Validate &amp; cast your values by defining simple and readable rules.
 
-## API
+## Documentation
 
-### `new OhMyProps(props_description)`
+Documentation is (will be) available [here](https://ohmyprops.kirick.me)
 
-Creates an OhMyProps instance.
+## Why?
+
+It's really important to receive valid values, but it's not always easy to do that, especially if you have a lot of properties with different types and custom validation functions.
+
+OhMyProps allows you to define rules for your properties and validate them easily.
+
+### User's name validation
+
+Names obviously should be strings, but they also should be not empty and start with a capital letter:
 
 ```javascript
-const propsInstance = new OhMyProps({
-    foo: {
-        type: String,
-        default: 'bar',
-    },
-    baz: {
-        type: Number,
-        validator: (value) => Number.isInteger(value),
-    },
+import { OhMyPropsValidator } from 'oh-my-props';
+
+const nameValidator = new OhMyPropsValidator({
+    type: String,
+    validator: (value) => value.length > 0 && value[0].toUpperCase() === value[0],
 });
+nameValidator.cast('Peter'); // => 'Peter'
+nameValidator.cast('peter'); // => OhMyPropsInvalidValueError
+nameValidator.cast('');      // => OhMyPropsInvalidValueError
+nameValidator.cast(42);      // => OhMyPropsInvalidValueError
 ```
 
-Every value of `props_description` is an Object describing a property. Possible options:
+### Object's properties validation
 
-| Name | Type | Default value | Description |
-| - | - | - | - |
-| `type` | `any` | — | Prop of what type you expect.<br>Built-in options: `String`, `Number`, `Boolean`, `Symbol`, `Object` (plain), `Array` and `JSON`. <br> You can define type validators by yourself using `createType` static method. |
-| `is_nullable` | `Boolean` | `false` | Set to `true` if you want to allow `null` values on that property. |
-| `type_cast` | `Boolean` | `false` | Should OhMyProps cast property's value to defined `type`. <br> It can be used to cast HTTP API parameters from strings or to decode data. |
-| `default` | `any` | — | Default value for undefined property. If that option is a `function`, OhMyProps will threat that function as a factory function. <br> **Be careful**: non-primitive defaults (e.g. `Object` or `Array`) must be returned from a factory function. |
-| `subvalidator` | `OhMyProps` | — | An OhMyProps instance that will validate a value itself if this is plain `Object` or every element inside `Array`. |
-| `validator` | `Function` <br> `Array<Function>` | — | Validator(s) that will be called with property's value. <br> If any validator will return any value but `true`, validation will be failed. |
-
-### Class method `transform(props)`
-
-Transforms an object `props`. Any properties not defined at `new OhMyProps` will be omitted.
-
-Returns a tramsformed object or `null` if transformation or validation has failed.
+For example, if you want to validate user, you should have `name` and `age` properties, and `age` should be a positive integer. Also, you can have `newsletter_consent` property, which is `false` by default:
 
 ```javascript
-propsInstance.transform({
-    foo: 'hello world!',
-    baz: 10,
-    unknown_property: 42,
-});
-// => { foo: 'hello world!', baz: 10 }
+import { OhMyPropsValidator } from 'oh-my-props';
 
-propsInstance.transform({ baz: 10 });
-// => { foo: 'bar', baz: 10 }
-
-propsInstance.transform({
-    foo: [ 1, 2, 3 ], // expected String, got Array -> fail
-    baz: 12.34,       // validation error: Number.isInteger will return false
-});
-// => null
-```
-
-### Class method `isValid(props)`
-
-Returns `true` if `props` was succesfully transformed and validated.
-
-```javascript
-propsInstance.isValid({
-    foo: 'hello world!',
-    baz: 10,
-    unknown_property: 42,
-});
-// => true
-```
-
-### Static method `wrap(props_description, targetFunction)`
-
-Returns a function that will transform and validate properties and pass them to `targetFunction` if they are valid. If they are not, an error will be throwed.
-
-```javascript
-const doubleNumber = OhMyProps.wrap(
-    {
-        num: {
+const optionsValidator = new OhMyPropsValidator({
+    type: Object,
+    validator: (value) => Object.keys(value).length > 0,
+    entries: {
+        name: {
+            type: String,
+            validator: (value) => value.length > 0 && value[0].toUpperCase() === value[0],
+        },
+        age: {
             type: Number,
-            type_cast: true,
-            validator: (value) => value > 0 && Number.isInteger(value),
+            validator: (value) => Number.isInteger(value) && value > 0,
+        },
+        newsletter_consent: {
+            type: Boolean,
+            default: false,
         },
     },
-    ({ num }) => {
-        return num * 2;
+});
+
+optionsValidator.cast({
+    name: 'Peter',
+    age: 42,
+    newsletter_consent: true,
+}); // => { name: 'Peter', age: 42, newsletter_consent: true }
+optionsValidator.cast({
+    name: 'Peter',
+    age: 42,
+}); // => { name: 'Peter', age: 42, newsletter_consent: false }
+optionsValidator.cast({
+    name: 'Peter',
+}); // => OhMyPropsInvalidValueError (age is missing and no default value were specified in validator)
+```
+
+Entries of the `Map` can be validated in the same way.
+
+### Object's values validation
+
+Let's say you have an object, where every value should be a positive integer, but keys should be no longer than 10 characters:
+
+```javascript
+import { OhMyPropsValidator } from 'oh-my-props';
+
+const optionsValidator = new OhMyPropsValidator({
+    type: Object,
+    validator: (value) => Object.keys(value).length > 0,
+    keys: {
+        type: String,
+        validator: (value) => value.length > 0 && value.length <= 10,
+    },
+    values: {
+        type: Number,
+        validator: (value) => Number.isInteger(value) && value > 0,
+    },
+});
+
+optionsValidator.cast({
+    foo: 1,
+    bar: 2,
+}); // => { foo: 1, bar: 2 }
+optionsValidator.cast({
+    foo: 1,
+    bar: -2.345,
+}); // => OhMyPropsInvalidValueError: Value $.bar is not valid.
+optionsValidator.cast({
+    foo: 1,
+    toooooooooolongkey: 2,
+}); // => OhMyPropsInvalidKeyError: Key toooooooooolongkey of the object itself is not valid.
+```
+
+Values of `Array`, `Set` and `Map` can be validated in the same way, but only `Object` and `Map` can validate keys.
+
+### Multiple validators
+
+If you your value can be either a `String` or `Array<String>`, you can use multi-validator:
+
+```javascript
+import { OhMyPropsMultiValidator } from 'oh-my-props';
+
+const isName = (value) => value.length > 0 && value[0].toUpperCase() === value[0];
+
+const optionsValidator = new OhMyPropsMultiValidator(
+    {
+        type: String,
+        validator: isName,
+    },
+    {
+        type: Array,
+        validator: (value) => value.length > 0,
+        entries: {
+            type: String,
+            validator: isName,
+        },
     },
 );
 
-doubleNumber({ num: 13 });
-// => 26
-
-doubleNumber({ num: '10' });
-// => 20
-
-doubleNumber({ num: 'hello' });
-// => TypeError: Invalid props.
-
-doubleNumber({ num: 1.234 });
-// => TypeError: Invalid props.
-
-doubleNumber();
-// => TypeError: Invalid props.
-```
-
-### Statiс method `createType({ name, transformer, validator })`
-
-Creates a user-defined type with functions that transforms (casts) a value and validates it.
-
-Returns an object that should be passed as `type` to property description.
-
-```javascript
-// create a type
-const BASE64_BUFFER = OhMyProps.createType({
-    name: 'BASE64_BUFFER', // not necessary, but useful for logs
-    transformer: (value) => Buffer.from(value, 'base64'),
-    validator: (value) => Buffer.isBuffer(value),
-});
-
-// use that type at the instance
-const anotherPropsInstance = new OhMyProps({
-    payload: {
-        type: BASE64_BUFFER,
-        type_cast: true,
-    },
-});
-
-// try to cast
-anotherPropsInstance.transform({
-    payload: 'aGVsbG8gd29ybGQ=',
-});
-// => { payload: <Buffer 68 65 6c 6c 6f 20 77 6f 72 6c 64> }
-
-// it works with buffers too
-anotherPropsInstance.transform({
-    payload: Buffer.from([ 0xDE, 0xAD ]),
-});
-// => { payload: <Buffer de ad> }
+optionsValidator.cast('Peter');             // => 'Peter'
+optionsValidator.cast([ 'Peter', 'John' ]); // => [ 'Peter', 'John' ]
+optionsValidator.cast('');                  // => OhMyPropsInvalidValueError
+optionsValidator.cast([ 'Peter', '' ]);     // => OhMyPropsInvalidValueError
+optionsValidator.cast([]);                  // => OhMyPropsInvalidValueError (empty array is not allowed)
 ```
