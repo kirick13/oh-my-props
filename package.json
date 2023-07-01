@@ -1,6 +1,6 @@
 {
 	"name": "oh-my-props",
-	"version": "3.0.0-beta.13",
+	"version": "3.0.0-beta.20",
 	"description": "Validate & transform your object's properties by schema.",
 	"publishConfig": {
 		"access": "public",
